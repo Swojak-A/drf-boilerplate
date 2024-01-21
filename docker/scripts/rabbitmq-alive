@@ -1,0 +1,36 @@
+#!/usr/local/bin/python
+"""Script to check if RabbitMQ is running."""
+
+from itertools import count
+from os import environ
+from time import sleep
+
+from pika import BlockingConnection, ConnectionParameters, PlainCredentials
+from pika.exceptions import AMQPError, ChannelError
+
+
+def check_is_rabbitmq_running(max_tries: int, try_interval: int):
+    """Check if RabbitMQ is running."""
+    parameters = ConnectionParameters(
+        host=environ["RABBITMQ_HOST"],
+        port=int(environ["RABBITMQ_PORT"]),
+        virtual_host=environ["RABBITMQ_VHOST"],
+        credentials=PlainCredentials(
+            username=environ["RABBITMQ_USERNAME"], password=environ["RABBITMQ_PASSWORD"]
+        ),
+    )
+
+    for try_count in count():
+        try:
+            with BlockingConnection(parameters=parameters):
+                pass  # we need to connect and disconnect without errors
+        except (AMQPError, ChannelError):
+            if try_count == max_tries:
+                raise
+            sleep(try_interval)
+        else:
+            break
+
+
+if __name__ == "__main__":
+    check_is_rabbitmq_running(max_tries=60, try_interval=1)

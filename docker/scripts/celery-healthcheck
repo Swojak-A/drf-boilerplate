@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+
+set -e
+
+cd /backend
+
+STATUS=$(celery -A scheduler status | grep ${HOSTNAME} | awk '{print $3}')
+
+if [[ "$STATUS" == "OK" ]]; then
+  exit 0
+else
+  exit 1
+fi

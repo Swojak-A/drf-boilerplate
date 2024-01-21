@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+
+HEALTHCHECK_TIMESTAMP_FILE=/tmp/_healthcheck_status
+INTERVAL_IN_SECONDS=${1:-70}
+
+if [[ ! -e $HEALTHCHECK_TIMESTAMP_FILE ]]; then
+  exit 1
+fi
+
+if [[ "$(($(date +"%s") - $(cat $HEALTHCHECK_TIMESTAMP_FILE)))" -gt "$INTERVAL_IN_SECONDS" ]]; then
+  exit 1
+fi
