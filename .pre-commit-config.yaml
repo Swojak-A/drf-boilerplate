@@ -1,0 +1,11 @@
+repos:
+  - repo: local
+    hooks:
+      - id: verify
+        name: verify
+        files: "backend/.*"
+        verbose: true
+        pass_filenames: false
+        require_serial: true
+        language: system
+        entry: sh -c "$(if which docker-compose > /dev/null 2>&1; then echo docker-compose; else echo docker compose; fi) run --rm -T backend /scripts/verify"

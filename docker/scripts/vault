@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+echo $VAULT | base64 -d

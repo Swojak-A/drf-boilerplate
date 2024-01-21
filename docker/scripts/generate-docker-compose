@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+
+set -e
+
+ENVIRONMENT=$1
+CONTAINER_ID=$2
+DOCKER_TAG=$3
+
+if [ -z "${ENVIRONMENT}" ]; then
+  ENVIRONMENT=developer
+fi
+
+GIT_HEAD=$(git rev-parse --short=12 HEAD)
+
+if [ ${ENVIRONMENT} == 'developer' ]; then
+  ENVIRONMENT=${ENVIRONMENT} CONTAINER_ID=$2 VERSION=${GIT_HEAD} DOCKER_TAG=$DOCKER_TAG GIT_HEAD=${GIT_HEAD} ansible-playbook ansible/generate-docker-compose.yml -i ansible/inventory/developer
+else
+  ENVIRONMENT=${ENVIRONMENT} CONTAINER_ID=$2 VERSION=${GIT_HEAD} DOCKER_TAG=$DOCKER_TAG GIT_HEAD=${GIT_HEAD} ansible-playbook ansible/generate-docker-compose.yml -i ansible/inventory/developer
+fi
+
+if [ ${ENVIRONMENT} == 'ci' ]; then
+  mv docker-compose.yml docker-compose-${CI_JOB_ID}.yml
+fi

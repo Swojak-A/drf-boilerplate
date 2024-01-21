@@ -1,0 +1,126 @@
+version: "3"
+
+networks:
+  app-tier:
+    driver: bridge
+
+services:
+  zookeeper{{ CONTAINER_ID }}:
+    container_name: {{ APP_NAME }}-zookeeper{{ CONTAINER_ID }}
+    image: zookeeper
+    networks:
+      - app-tier
+
+  rabbitmq{{ CONTAINER_ID }}:
+    container_name: {{ APP_NAME }}-rabbitmq{{ CONTAINER_ID }}
+    image: {{ RABBITMQ_IMAGE }}:{{ RABBITMQ_TAG }}
+    hostname: rabbitmq
+    networks:
+      - app-tier
+    environment:
+      RABBITMQ_ERLANG_COOKIE: "SWQOKODSQALRPCLNMEQG"
+      RABBITMQ_DEFAULT_USER: "{{ ENV.RABBITMQ_USERNAME }}"
+      RABBITMQ_DEFAULT_PASS: "{{ ENV.RABBITMQ_PASSWORD }}"
+      RABBITMQ_DEFAULT_VHOST: "{{ ENV.RABBITMQ_VHOST }}"
+{% if ENV.ENVIRONMENT == 'developer' %}
+    volumes:
+      - ./.datastore/rabbitmq:/var/lib/rabbitmq
+{% endif %}
+
+  redis{{ CONTAINER_ID }}:
+    container_name: {{ APP_NAME }}-redis{{ CONTAINER_ID }}
+    image: redis:latest
+    networks:
+      - app-tier
+{% if APPLICATION.ENVIRONMENT == 'developer' %}
+    volumes:
+      - ./.datastore/redis:/data
+{% endif %}
+
+  postgresql{{ CONTAINER_ID }}:
+    container_name: {{ APP_NAME }}-postgresql{{ CONTAINER_ID }}
+    image: postgres:14
+    environment:
+      POSTGRES_USER: "{{ ENV.DATABASE_USER }}"
+      POSTGRES_DB: "{{ ENV.DATABASE_NAME }}"
+      POSTGRES_PASSWORD: "{{ ENV.DATABASE_PASSWORD }}"
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=en_US.UTF-8 --lc-ctype=en_US.UTF-8"
+    networks:
+      - app-tier
+{% if APPLICATION.ENVIRONMENT == 'developer' %}
+    volumes:
+      - ./.datastore/postgresql:/var/lib/postgresql/data
+{% endif %}
+
+  backend{{ CONTAINER_ID }}:
+    container_name: {{ APP_NAME }}-backend{{ CONTAINER_ID }}
+    image: drf-boilerplate-developer:latest
+    depends_on:
+      - postgresql{{ CONTAINER_ID }}
+      - rabbitmq{{ CONTAINER_ID }}
+      - redis{{ CONTAINER_ID }}
+      - zookeeper{{ CONTAINER_ID }}
+    networks:
+      - app-tier
+    env_file: .environment
+    environment:
+      APPLICATION_TYPE: backend
+{% if APPLICATION.ENVIRONMENT == 'developer' %}
+    volumes:
+      - ./backend:/backend
+      - ./docker/scripts:/scripts
+    ports:
+      - "8000:8000"
+    user: "{{ ansible_user_uid }}:{{ ansible_user_gid }}"
+{% endif %}
+{% if APPLICATION.ENVIRONMENT == 'ci' %}
+    volumes:
+      - ./docker/scripts:/scripts
+{% endif %}
+
+{% if ENV.ENVIRONMENT == 'developer' %}
+  celerybeat{{ CONTAINER_ID }}:
+    container_name: {{ APP_NAME }}-celerybeat{{ CONTAINER_ID }}
+    image: drf-boilerplate-developer:latest
+    depends_on:
+      - postgresql{{ CONTAINER_ID }}
+      - rabbitmq{{ CONTAINER_ID }}
+      - redis{{ CONTAINER_ID }}
+      - zookeeper{{ CONTAINER_ID }}
+    networks:
+      - app-tier
+    env_file: .environment
+    environment:
+      APPLICATION_TYPE: worker
+      CELERY_PROCESS: celerybeat
+{% if APPLICATION.ENVIRONMENT == 'developer' %}
+    volumes:
+      - ./backend:/backend
+      - ./docker/scripts:/scripts
+    user: "{{ ansible_user_uid }}:{{ ansible_user_gid }}"
+{% endif %}
+{% endif %}
+
+{% for queue in WORKER_QUEUE_NAME %}
+  worker_{{ queue }}{{ CONTAINER_ID }}:
+    container_name: {{ APP_NAME }}-worker_{{ queue }}{{ CONTAINER_ID }}
+    image: drf-boilerplate-developer:latest
+    depends_on:
+      - postgresql{{ CONTAINER_ID }}
+      - rabbitmq{{ CONTAINER_ID }}
+      - redis{{ CONTAINER_ID }}
+      - zookeeper{{ CONTAINER_ID }}
+    networks:
+      - app-tier
+    env_file: .environment
+    environment:
+      CELERY_QUEUE_NAME: {{ queue }}
+      APPLICATION_TYPE: worker
+      CELERY_PROCESS: worker
+{% if APPLICATION.ENVIRONMENT == 'developer' %}
+    volumes:
+      - ./backend:/backend
+      - ./docker/scripts:/scripts
+    user: "{{ ansible_user_uid }}:{{ ansible_user_gid }}"
+{% endif %}
+{% endfor %}
