@@ -1,0 +1,121 @@
+name: Django Boilerplate Tests
+
+on:
+  push:
+    branches:
+      - master
+      - develop
+  pull_request:
+    branches:
+      - master
+      - develop
+
+env:
+  ENVIRONMENT: "developer"
+  CONTAINER_IMAGE: "drf-boilerplate-developer"
+  COMPOSE_IGNORE_ORPHANS: "True"
+  DOCKER_BUILDKIT: "1"
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v1
+
+    - name: Cache Docker layers
+      uses: actions/cache@v2
+      with:
+        path: /tmp/.buildx-cache
+        key: ${{ runner.os }}-buildx-${{ github.sha }}
+        restore-keys: |
+          ${{ runner.os }}-buildx-
+
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v1
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+
+    - name: Set dynamic variable - GIT_HEAD
+      run: |
+        echo "GIT_HEAD=$(git rev-parse --short=12 HEAD)" >> $GITHUB_ENV
+
+    - name: Set dynamic variable - DOCKER_TAG
+      run: |
+        echo "DOCKER_TAG=$GIT_HEAD" >> $GITHUB_ENV
+
+    - name: Before script
+      run: |
+        ansible-playbook -i ansible/inventory/build ansible/build-environment.yml
+        ./docker/scripts/generate-docker-compose $ENVIRONMENT $CI_JOB_ID $DOCKER_TAG
+        echo "docker tag $GIT_HEAD $CONTAINER_IMAGE:$DOCKER_TAG"
+
+    - name: Build Docker image
+      run: |
+        echo "docker tag $CONTAINER_IMAGE:$DOCKER_TAG"
+        docker build --pull -t $CONTAINER_IMAGE:$DOCKER_TAG .
+
+    - name: Push Image to Docker Hub
+      run: |
+        docker push $CONTAINER_IMAGE:$DOCKER_TAG
+
+    - name: Start Docker Compose Services
+      run: docker-compose up -d
+
+    - name: Run Tests
+      run: docker-compose exec -T backend pytest --maxfail=1
+
+
+#jobs:
+#  test:
+#    runs-on: ubuntu-latest
+#    services:
+#      docker:
+#        image: docker:19.03.12
+#        options: --privileged
+#    steps:
+#    - uses: actions/checkout@v2
+#
+#    # Setup Python (if necessary for Ansible or other scripts directly executed)
+#    - name: Set up Python 3.11
+#      uses: actions/setup-python@v2
+#      with:
+#        python-version: 3.11
+#
+#    # Install Ansible (if necessary for your setup)
+#    - name: Install Ansible
+#      run: |
+#        python -m pip install --upgrade pip
+#        pip install ansible
+#
+#    # Login to Docker Hub if you need to pull private images
+#    # - name: Log in to Docker Hub
+#    #   uses: docker/login-action@v1
+#    #   with:
+#    #     username: ${{ secrets.DOCKER_USERNAME }}
+#    #     password: ${{ secrets.DOCKER_PASSWORD }}
+#
+#    # Run your custom script
+#    - name: Prepare environment and run tests
+#      run: |
+#        export GIT_HEAD=$(git rev-parse --short=12 HEAD)
+#        ansible-playbook -i ansible/inventory/build ansible/build-environment.yml
+#        DOCKER_DEFAULT_PLATFORM=linux/amd64 docker build -t drf-boilerplate-developer -f Dockerfile .
+#        ./docker/scripts/generate-docker-compose developer
+#        chmod 600 .datastore/rabbitmq/.erlang.cookie || true # for .erlang.cookie permission issue
+#        echo "running docker-compose up"
+#        docker-compose up -d
+#        sleep 30
+#        echo "running tests"
+#        docker-compose exec web pytest --maxfail=1
+#
+#    # You might need to setup Docker Buildx if your build requires it
+#    # - name: Set up Docker Buildx
+#    #   uses: docker/setup-buildx-action@v1
+#
+#    # Add additional steps as necessary for setup, running tests, or cleanup
